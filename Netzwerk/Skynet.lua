@@ -13,7 +13,6 @@ local CBOR = (function()
 
 	local setmetatable, getmetatable = setmetatable, getmetatable;
 	local dbg_getmetatable
-	-- if debug then dbg_getmetatable = debug.getmetatable else dbg_getmetatable = getmetatable end
 	local assert = assert;
 	local error = error;
 	local type = type;
@@ -231,7 +230,6 @@ local CBOR = (function()
 			map[p], p = encode(k, opts), p + 1;
 			map[p], p = encoded_v, p + 1;
 		end
-		-- map[p] = "\255";
 		map[1] = integer(i - 1, 160);
 		return t_concat(is_array and array or map);
 	end
@@ -251,7 +249,6 @@ local CBOR = (function()
 			map[p], p = encode(v, opts), p + 1;
 			len = len + 1;
 		end
-		-- map[p] = "\255";
 		map[1] = integer(len, 160);
 		return t_concat(map);
 	end
@@ -552,28 +549,28 @@ local CBOR = (function()
 	};
 end)()
 
-local securelink = {
-	server = "wss://osmarks.tk/securelink2/connect/",
+local skynet = {
+	server = "wss://osmarks.tk/skynet2/connect/",
 	socket = nil,
 	open_channels = {},
 	CBOR = CBOR
 }
 
-function securelink.connect(force)
-	if not securelink.socket or force then
-		if securelink.socket then securelink.socket.close() end
-		local sock = http.websocket(securelink.server)
-		if not sock then error "securelink server unavailable, broken or running newer protocol version." end
-		securelink.socket = sock
+function skynet.connect(force)
+	if not skynet.socket or force then
+		if skynet.socket then skynet.socket.close() end
+		local sock = http.websocket(skynet.server)
+		if not sock then error "Skynet server unavailable, broken or running newer protocol version." end
+		skynet.socket = sock
 		
-		for _, c in pairs(securelink.open_channels) do
-			securelink.open(c)	
+		for _, c in pairs(skynet.open_channels) do
+			skynet.open(c)	
 		end
 	end
 end
 
-function securelink.disconnect()
-	if securelink.socket then securelink.socket.close() end
+function skynet.disconnect()
+	if skynet.socket then skynet.socket.close() end
 end
 
 local function value_in_table(t, v)
@@ -583,30 +580,30 @@ end
 
 local function send_raw(data, tries)
 	local tries = tries or 0
-	securelink.connect()
-	local ok, err = pcall(securelink.socket.send, CBOR.encode(data), true)
+	skynet.connect()
+	local ok, err = pcall(skynet.socket.send, CBOR.encode(data), true)
 	if not ok then
 		if tries > 0 then sleep(tries) end
 		if tries > 5 then error("Max reconnection attempts exceeded. " .. err) end
-		pcall(securelink.connect, true)
+		pcall(skynet.connect, true)
 		send_raw(data, tries + 1)
 	end
 end
 
-function securelink.open(channel)
-	if not value_in_table(securelink.open_channels, channel) then
+function skynet.open(channel)
+	if not value_in_table(skynet.open_channels, channel) then
 		send_raw {
 			"open",
 			channel
 		}
-		table.insert(securelink.open_channels, channel)
+		table.insert(skynet.open_channels, channel)
 	end
 end
 
 local function recv_one(filter)
-	securelink.connect()
+	skynet.connect()
 	while true do
-		local contents = securelink.socket.receive()
+		local contents = skynet.socket.receive()
 		local result = CBOR.decode(contents)
 		if type(result) == "table" then
 			if result[1] == "error" then error(result[2] .. ": " .. result[3]) end
@@ -624,15 +621,15 @@ local function recv_message(channel)
 	return m[2].channel, m[2].message, m[2]
 end
 
-function securelink.logs(start, end_)
-	error "The securelink server no longer supports log retrieval"
+function skynet.logs(start, end_)
+	error "The Skynet server no longer supports log retrieval"
 end
 
 local listener_running = false
-function securelink.listen(force_run)
+function skynet.listen(force_run)
 	local function run()
 		while true do
-			os.queueEvent("securelink_message", recv_message())	
+			os.queueEvent("skynet_message", recv_message())	
 		end
 	end
 	if not listener_running or force_run then
@@ -644,12 +641,12 @@ function securelink.listen(force_run)
 	end
 end
 
-function securelink.receive(channel)
-	if channel then securelink.open(channel) end
+function skynet.receive(channel)
+	if channel then skynet.open(channel) end
 	return recv_message(channel)
 end
 
-function securelink.send(channel, data, full)
+function skynet.send(channel, data, full)
 	local obj = full or {}
 	obj.message = data
 	obj.channel = channel
@@ -659,4 +656,4 @@ function securelink.send(channel, data, full)
 	}
 end
 
-return securelink
+return skynet
