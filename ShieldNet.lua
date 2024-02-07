@@ -7,7 +7,7 @@ local CBOR = (function()
 		return mod;
 	end
 	local dostring = function (s)
-		local ok, f = pcall(loadstring or load, s); -- luacheck: read globals loadstring
+		local ok, f = pcall(loadstring or load, s);
 		if ok and f then return f(); end
 	end
 
@@ -39,7 +39,6 @@ local CBOR = (function()
 		dostring "return function(a,b) return a >> b end" or
 		function (a, b) return m_max(0, m_floor(a / (2 ^ b))); end;
 
-	-- sanity check
 	if s_pack and s_pack(">I2", 0) ~= "\0\0" then
 		s_pack = nil;
 	end
@@ -47,7 +46,7 @@ local CBOR = (function()
 		s_unpack = nil;
 	end
 
-	local _ENV = nil; -- luacheck: ignore 211
+	local _ENV = nil;
 
 	local encoder = {};
 
@@ -55,10 +54,8 @@ local CBOR = (function()
 		return encoder[type(obj)](obj, opts);
 	end
 
-	-- Major types 0, 1 and length encoding for others
 	local function integer(num, m)
 		if m == 0 and num < 0 then
-			-- negative integer, major type 1
 			num, m = - num - 1, 32;
 		end
 		if num < 24 then
@@ -126,16 +123,14 @@ local CBOR = (function()
 		return setmetatable({ tag = tag, value = value }, tagged_mt);
 	end
 
-	local null = simple(22, "null"); -- explicit null
-	local undefined = simple(23, "undefined"); -- undefined or nil
+	local null = simple(22, "null");
+	local undefined = simple(23, "undefined");
 	local BREAK = simple(31, "break", "\255");
 
-	-- Number types dispatch
 	function encoder.number(num)
 		return encoder[m_type(num)](num);
 	end
 
-	-- Major types 0, 1
 	function encoder.integer(num)
 		if num < 0 then
 			return integer(-1 - num, 32);
@@ -143,9 +138,8 @@ local CBOR = (function()
 		return integer(num, 0);
 	end
 
-	-- Major type 7
 	function encoder.float(num)
-		if num ~= num then -- NaN shortcut
+		if num ~= num then
 			return "\251\127\255\255\255\255\255\255\255";
 		end
 		local sign = (num > 0 or 1 / num > 0) and 0 or 1;
@@ -184,19 +178,16 @@ local CBOR = (function()
 		end
 	end
 
-
-	-- Major type 2 - byte strings
 	function encoder.bytestring(s)
 		return integer(#s, 64) .. s;
 	end
 
-	-- Major type 3 - UTF-8 strings
 	function encoder.utf8string(s)
 		return integer(#s, 96) .. s;
 	end
 
 	function encoder.string(s)
-		if s:match "^[\0-\127]*$" then -- If string is entirely ASCII characters, then treat it as a UTF-8 string
+		if s:match "^[\0-\127]*$" then
 			return encoder.utf8string(s)
 		else
 			return encoder.bytestring(s)
@@ -228,14 +219,6 @@ local CBOR = (function()
 				return encode_t(t, opts);
 			end
 		end
-		-- the table is encoded as an array iff when we iterate over it,
-		-- we see succesive integer keys starting from 1.  The lua
-		-- language doesn't actually guarantee that this will be the case
-		-- when we iterate over a table with successive integer keys, but
-		-- due an implementation detail in PUC Rio Lua, this is what we
-		-- usually observe.  See the Lua manual regarding the # (length)
-		-- operator.  In the case that this does not happen, we will fall
-		-- back to a map with integer keys, which becomes a bit larger.
 		local array, map, i, p = { integer(#t, 128) }, { "\191" }, 1, 2;
 		local is_array = true;
 		for k, v in pairs(t) do
@@ -253,7 +236,6 @@ local CBOR = (function()
 		return t_concat(is_array and array or map);
 	end
 
-	-- Array or dict-only encoders, which can be set as __tocbor metamethod
 	function encoder.array(t, opts)
 		local array = { };
 		for i, v in ipairs(t) do
@@ -273,11 +255,11 @@ local CBOR = (function()
 		map[1] = integer(len, 160);
 		return t_concat(map);
 	end
-	encoder.dict = encoder.map; -- COMPAT
+	encoder.dict = encoder.map;
 
 	function encoder.ordered_map(t, opts)
 		local map = {};
-		if not t[1] then -- no predefined order
+		if not t[1] then
 			local i = 0;
 			for k in pairs(t) do
 				i = i + 1;
@@ -295,8 +277,6 @@ local CBOR = (function()
 		error "can't encode function";
 	end
 
-	-- Decoder
-	-- Reads from a file-handle like object
 	local function read_bytes(fh, len)
 		return fh:read(len);
 	end
@@ -410,10 +390,10 @@ local CBOR = (function()
 	local function read_half_float(fh)
 		local exponent = read_byte(fh);
 		local fraction = read_byte(fh);
-		local sign = exponent < 128 and 1 or -1; -- sign is highest bit
+		local sign = exponent < 128 and 1 or -1;
 
-		fraction = fraction + (exponent * 256) % 1024; -- copy two(?) bits from exponent to fraction
-		exponent = b_rshift(exponent, 2) % 32; -- remove sign bit and two low bits from fraction;
+		fraction = fraction + (exponent * 256) % 1024;
+		exponent = b_rshift(exponent, 2) % 32;
 
 		if exponent == 0 then
 			return sign * m_ldexp(fraction, -24);
@@ -429,7 +409,7 @@ local CBOR = (function()
 	local function read_float(fh)
 		local exponent = read_byte(fh);
 		local fraction = read_byte(fh);
-		local sign = exponent < 128 and 1 or -1; -- sign is highest bit
+		local sign = exponent < 128 and 1 or -1;
 		exponent = exponent * 2 % 256 + b_rshift(fraction, 7);
 		fraction = fraction % 128;
 		fraction = fraction * 256 + read_byte(fh);
@@ -449,7 +429,7 @@ local CBOR = (function()
 	local function read_double(fh)
 		local exponent = read_byte(fh);
 		local fraction = read_byte(fh);
-		local sign = exponent < 128 and 1 or -1; -- sign is highest bit
+		local sign = exponent < 128 and 1 or -1;
 
 		exponent = exponent %  128 * 16 + b_rshift(fraction, 4);
 		fraction = fraction % 16;
@@ -513,9 +493,6 @@ local CBOR = (function()
 	decoder[6] = read_semantic;
 	decoder[7] = read_simple;
 
-	-- opts.more(n) -> want more data
-	-- opts.simple -> decode simple value
-	-- opts[int] -> tagged decoder
 	local function decode(s, opts)
 		local fh = {};
 		local pos = 1;
@@ -545,7 +522,7 @@ local CBOR = (function()
 			return ret;
 		end
 
-		function fh:write(bytes) -- luacheck: no self
+		function fh:write(bytes)
 			s = s .. bytes;
 			if pos > 256 then
 				s = s:sub(pos + 1);
@@ -558,23 +535,18 @@ local CBOR = (function()
 	end
 
 	return {
-		-- en-/decoder functions
 		encode = encode;
 		decode = decode;
 		decode_file = read_object;
 
-		-- tables of per-type en-/decoders
 		type_encoders = encoder;
 		type_decoders = decoder;
 
-		-- special treatment for tagged values
 		tagged_decoders = tagged_decoders;
 
-		-- constructors for annotated types
 		simple = simple;
 		tagged = tagged;
 
-		-- pre-defined simple values
 		null = null;
 		undefined = undefined;
 	};
@@ -589,7 +561,6 @@ local skynet = {
 
 function skynet.connect(force)
 	if not skynet.socket or force then
-		-- If we already have a socket and are throwing it away, close old one.
 		if skynet.socket then skynet.socket.close() end
 		local sock = http.websocket(skynet.server)
 		if not sock then error "Skynet server unavailable, broken or running newer protocol version." end
@@ -613,18 +584,16 @@ end
 local function send_raw(data, tries)
 	local tries = tries or 0
 	skynet.connect()
-	local ok, err = pcall(skynet.socket.send, CBOR.encode(data), true) -- send in binary mode
+	local ok, err = pcall(skynet.socket.send, CBOR.encode(data), true)
 	if not ok then
 		if tries > 0 then sleep(tries) end
 		if tries > 5 then error("Max reconnection attempts exceeded. " .. err) end
-		pcall(skynet.connect, true) -- attempt to force reconnect
+		pcall(skynet.connect, true)
 		send_raw(data, tries + 1)
 	end
 end
 
--- Opens the given channel
 function skynet.open(channel)
-	-- Don't send unnecessary channel-open messages
 	if not value_in_table(skynet.open_channels, channel) then
 		send_raw {
 			"open",
@@ -660,7 +629,6 @@ function skynet.logs(start, end_)
 end
 
 local listener_running = false
--- Converts "websocket_message"s into "skynet_message"s.
 function skynet.listen(force_run)
 	local function run()
 		while true do
@@ -676,16 +644,11 @@ function skynet.listen(force_run)
 	end
 end
 
--- Receives one message on given channel
--- Will open channel if it is not already open
--- Returns the channel, message, and full message object
 function skynet.receive(channel)
 	if channel then skynet.open(channel) end
 	return recv_message(channel)
 end
 
--- Send given data on given channel
--- Can accept a third argument - an object of extra metadata to send
 function skynet.send(channel, data, full)
 	local obj = full or {}
 	obj.message = data
