@@ -6,8 +6,10 @@ mon.setTextScale(2)
 print("Enter the text you want to display:")
 local displayText = read()
 
+local textSize = string.len(displayText) -- Get the length of the text
+
 while true do
-    if pos==-26 then
+    if pos==-textSize then -- Adjust the pos variable according to the text size
         pos = 18
     end
     
